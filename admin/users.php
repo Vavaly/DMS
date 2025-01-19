@@ -22,18 +22,13 @@ $currentUser = $stmt->fetch(PDO::FETCH_ASSOC);
 // Function to fetch all users
 function getAllUsers($db)
 {
-    try {
-        $query = "SELECT id, username, email, role, is_active, created_at 
-                  FROM users 
-                  ORDER BY created_at DESC";
-        $stmt = $db->prepare($query);
-        $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        error_log("Error fetching users: " . $e->getMessage());
-        return [];
-    }
+    $query = "SELECT id, username, email, role, created_at, is_active FROM users ORDER BY created_at DESC";
+    $stmt = $db->prepare($query);
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
+
+
 
 // Show modal based on GET parameters
 if (isset($_GET['action'])) {
@@ -47,87 +42,6 @@ if (isset($_GET['action'])) {
         $stmt->bindParam(":user_id", $edit_user_id);
         $stmt->execute();
         $edit_user = $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-}
-
-function ubahStatusPengguna($db, $user_id, $status_baru)
-{
-    try {
-        $query = "UPDATE users SET is_active = :status_baru WHERE id = :user_id";
-        $stmt = $db->prepare($query);
-        $stmt->bindParam(':user_id', $user_id);
-        $stmt->bindParam(':status_baru', $status_baru);
-
-        if ($stmt->execute()) {
-            return true;
-        }
-        return false;
-    } catch (PDOException $e) {
-        error_log("Error mengubah status pengguna: " . $e->getMessage());
-        return false;
-    }
-}
-
-function ambilDaftarPengguna($db, $status = null)
-{
-    try {
-        $query = "SELECT id, username, email, role, is_active, created_at 
-                 FROM users 
-                 WHERE role = 'user'";
-
-        if ($status !== null) {
-            $query .= " AND is_active = :status";
-        }
-
-        $query .= " ORDER BY created_at DESC";
-
-        $stmt = $db->prepare($query);
-
-        if ($status !== null) {
-            $stmt->bindParam(':status', $status, PDO::PARAM_INT);
-        }
-
-        $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (PDOException $e) {
-        error_log("Error mengambil daftar pengguna: " . $e->getMessage());
-        return [];
-    }
-}
-
-// Fungsi untuk mendapatkan status pengguna
-function getStatusPengguna($db, $user_id)
-{
-    try {
-        $query = "SELECT is_active FROM users WHERE id = :user_id";
-        $stmt = $db->prepare($query);
-        $stmt->bindParam(':user_id', $user_id);
-        $stmt->execute();
-
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $result ? $result['is_active'] : null;
-    } catch (PDOException $e) {
-        error_log("Error mendapatkan status pengguna: " . $e->getMessage());
-        return null;
-    }
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['action'])) {
-        switch ($_POST['action']) {
-            case 'ubah_status':
-                $user_id = filter_input(INPUT_POST, 'user_id', FILTER_SANITIZE_NUMBER_INT);
-                $status_baru = filter_input(INPUT_POST, 'status_baru', FILTER_SANITIZE_NUMBER_INT);
-
-                if (ubahStatusPengguna($db, $user_id, $status_baru)) {
-                    $_SESSION['success'] = $status_baru ? "Pengguna berhasil diaktifkan." : "Pengguna berhasil dinonaktifkan.";
-                } else {
-                    $_SESSION['error'] = "Gagal mengubah status pengguna.";
-                }
-                break;
-        }
-        header("Location: users.php");
-        exit();
     }
 }
 
@@ -194,14 +108,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $user_id = filter_input(INPUT_POST, 'user_id', FILTER_SANITIZE_NUMBER_INT);
 
                 try {
-                    $query = "UPDATE users SET is_active = 0 WHERE id = :user_id";
+                    // Hapus user secara permanent dari database
+                    $query = "DELETE FROM users WHERE id = :user_id";
                     $stmt = $db->prepare($query);
                     $stmt->bindParam(':user_id', $user_id);
 
                     if ($stmt->execute()) {
-                        $_SESSION['success'] = "Pengguna berhasil dihapus.";
+                        $_SESSION['success'] = "Pengguna berhasil dihapus secara permanent.";
                     } else {
                         $_SESSION['error'] = "Gagal menghapus pengguna.";
+                    }
+                } catch (PDOException $e) {
+                    $_SESSION['error'] = "Error: " . $e->getMessage();
+                }
+                break;
+
+            case 'toggle_status':
+                $user_id = filter_input(INPUT_POST, 'user_id', FILTER_SANITIZE_NUMBER_INT);
+                $new_status = filter_input(INPUT_POST, 'new_status', FILTER_SANITIZE_NUMBER_INT);
+
+                try {
+                    $query = "UPDATE users SET is_active = :new_status WHERE id = :user_id";
+                    $stmt = $db->prepare($query);
+                    $stmt->bindParam(':user_id', $user_id);
+                    $stmt->bindParam(':new_status', $new_status);
+
+                    if ($stmt->execute()) {
+                        $_SESSION['success'] = "Status pengguna berhasil diperbarui.";
+                    } else {
+                        $_SESSION['error'] = "Gagal memperbarui status pengguna.";
                     }
                 } catch (PDOException $e) {
                     $_SESSION['error'] = "Error: " . $e->getMessage();
@@ -490,7 +425,6 @@ $users = getAllUsers($db);
 
             <!-- Users Table -->
             <div class="bg-white rounded-xl shadow-md p-6">
-                <!-- Tambahkan ini di bagian tabel users.php -->
                 <table class="w-full">
                     <thead>
                         <tr class="border-b">
@@ -498,60 +432,59 @@ $users = getAllUsers($db);
                             <th class="text-left py-3 px-2">Nama Pengguna</th>
                             <th class="text-left py-3 px-2">Email</th>
                             <th class="text-left py-3 px-2">Peran</th>
-                            <th class="text-left py-3 px-2">Status</th>
                             <th class="text-left py-3 px-2">Tanggal Dibuat</th>
                             <th class="text-left py-3 px-2">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($users as $user): ?>
-                            <tr class="border-b hover:bg-gray-50">
+                            <tr
+                                class="border-b hover:bg-gray-50 transition <?php echo $user['is_active'] ? '' : 'bg-gray-100'; ?>">
                                 <td class="py-3 px-2"><?php echo htmlspecialchars($user['id']); ?></td>
                                 <td class="py-3 px-2">
                                     <a href="user-documents.php?user_id=<?php echo $user['id']; ?>"
-                                        class="text-grey-600 hover:text-grey-800 hover:underline">
+                                        class="text-gray-600 hover:text-gray-800 hover:underline">
                                         <?php echo htmlspecialchars($user['username']); ?>
                                     </a>
                                 </td>
                                 <td class="py-3 px-2"><?php echo htmlspecialchars($user['email']); ?></td>
-                                <td class="py-3 px-2"><?php echo htmlspecialchars($user['role']); ?></td>
                                 <td class="py-3 px-2">
                                     <span
-                                        class="<?php echo (isset($user['is_active']) && $user['is_active']) ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?> px-2 py-1 rounded-full text-xs">
-                                        <?php echo (isset($user['is_active']) && $user['is_active']) ? 'Aktif' : 'Tidak Aktif'; ?>
+                                        class="<?php echo $user['role'] === 'admin' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'; ?> px-2 py-1 rounded-full text-xs">
+                                        <?php echo htmlspecialchars($user['role']); ?>
                                     </span>
                                 </td>
-                                <td class="py-3 px-2"><?php echo date('d M Y', strtotime($user['created_at'])); ?></td>
+                                <td class="py-3 px-2"><?php echo htmlspecialchars($user['created_at']); ?></td>
+                                <td class="py-3 px-2">
+                                    <span
+                                        class="<?php echo $user['is_active'] ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?> px-2 py-1 rounded-full text-xs">
+                                        <?php echo $user['is_active'] ? 'Aktif' : 'Nonaktif'; ?>
+                                    </span>
+                                </td>
                                 <td class="py-3 px-2">
                                     <div class="flex space-x-2">
-                                        <!-- Edit Button -->
                                         <a href="?action=edit&user_id=<?php echo $user['id']; ?>"
-                                            class="text-blue-600 hover:text-blue-800" title="Edit">
+                                            class="text-gray-700 hover:text-gray-900">
                                             <i class="ri-edit-line"></i>
                                         </a>
-
-                                        <!-- Activation Toggle Button -->
                                         <form method="POST" action="" class="inline"
-                                            onsubmit="return confirm('Apakah Anda yakin ingin <?php echo (isset($user['is_active']) && $user['is_active']) ? 'menonaktifkan' : 'mengaktifkan'; ?> pengguna ini?');">
-                                            <input type="hidden" name="action" value="ubah_status">
-                                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                                            <input type="hidden" name="status_baru"
-                                                value="<?php echo (isset($user['is_active']) && $user['is_active']) ? '0' : '1'; ?>">
-                                            <button type="submit"
-                                                class="<?php echo (isset($user['is_active']) && $user['is_active']) ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'; ?>"
-                                                title="<?php echo (isset($user['is_active']) && $user['is_active']) ? 'Nonaktifkan' : 'Aktifkan'; ?>">
-                                                <i
-                                                    class="<?php echo (isset($user['is_active']) && $user['is_active']) ? 'ri-user-unfollow-line' : 'ri-user-follow-line'; ?>"></i>
-                                            </button>
-                                        </form>
-
-                                        <!-- Delete Button -->
-                                        <form method="POST" action="" class="inline"
-                                            onsubmit="return confirm('Apakah Anda yakin ingin menghapus pengguna ini?');">
+                                            onsubmit="return confirm('PERHATIAN: Pengguna akan dihapus secara permanent dan tidak dapat dikembalikan. Apakah Anda yakin ingin melanjutkan?');">
                                             <input type="hidden" name="action" value="delete">
                                             <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                                            <button type="submit" class="text-red-600 hover:text-red-800" title="Hapus">
+                                            <button type="submit" class="text-red-500 hover:text-red-700">
                                                 <i class="ri-delete-bin-line"></i>
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="" class="inline"
+                                            onsubmit="return confirm('Apakah Anda yakin ingin <?php echo $user['is_active'] ? 'menonaktifkan' : 'mengaktifkan'; ?> pengguna ini?');">
+                                            <input type="hidden" name="action" value="toggle_status">
+                                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                            <input type="hidden" name="new_status"
+                                                value="<?php echo $user['is_active'] ? '0' : '1'; ?>">
+                                            <button type="submit"
+                                                class="<?php echo $user['is_active'] ? 'text-yellow-500 hover:text-yellow-700' : 'text-green-500 hover:text-green-700'; ?>">
+                                                <i
+                                                    class="<?php echo $user['is_active'] ? 'ri-toggle-fill' : 'ri-toggle-line'; ?>"></i>
                                             </button>
                                         </form>
                                     </div>
