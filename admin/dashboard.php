@@ -1,34 +1,41 @@
 <?php
-// admin/dashboard.php
 session_start();
 require_once '../includes/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/function/weather.php';
 
+$weather = getWeather();
 $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
 
-
-if (!isset($_SESSION['username']) || $_SESSION['role'] !== 'admin') {
-    // Jika belum login atau bukan admin, arahkan ke halaman login
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header("Location: ../login.php");
     exit;
 }
 
+if (!empty($currentUser['profile_photo'])) {
+    $photoPath = '../uploads/profile_photos/' . $currentUser['profile_photo'];
+    if (!file_exists($photoPath)) {
+        error_log("Warning: Profile photo file not found: " . $photoPath);
+    }
+}
+
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+
 
 $user_id = $_SESSION['user_id'];
 
-// Get user name from database
-$stmt = $db->prepare("SELECT fullname FROM users WHERE id = :user_id");
+
+$stmt = $db->prepare("SELECT * FROM users WHERE id = :user_id");
 $stmt->bindParam(":user_id", $user_id);
 $stmt->execute();
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-// If user exists, get their fullname
-$userName = $user ? $user['fullname'] : 'Guest';
+$currentUser = $stmt->fetch(PDO::FETCH_ASSOC);
 
 
-// Get statistics
+
 $stmt = $db->query("SELECT COUNT(*) as total_documents FROM documents");
 $totalDocuments = $stmt->fetch(PDO::FETCH_ASSOC)['total_documents'];
 
@@ -41,17 +48,16 @@ $activeUsers = $stmt->fetch(PDO::FETCH_ASSOC)['active_users'];
 $stmt = $db->query("SELECT COUNT(*) as inactive_users FROM users WHERE is_active = 0 AND role = 'user'");
 $inactiveUsers = $stmt->fetch(PDO::FETCH_ASSOC)['inactive_users'];
 
-// Get recent documents
-$stmt = $db->query("SELECT d.*, u.fullname FROM documents d 
+$stmt = $db->query("SELECT d.*, u.username FROM documents d 
                     JOIN users u ON d.uploaded_by = u.id 
                     ORDER BY d.created_at DESC LIMIT 5");
 $recentDocuments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get recent users
 $stmt = $db->query("SELECT * FROM users WHERE role = 'user' 
                     ORDER BY created_at DESC LIMIT 5");
 $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
+
 
 <!DOCTYPE html>
 <html lang="id">
@@ -59,10 +65,11 @@ $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Admin - Manajemen Dokumen</title>
+    <title>Dashboard Admin</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css">
+    <script src="../public/js/clock.js"></script>
 </head>
 
 <body class="antialiased font-inter bg-[#f5f7fb]">
@@ -78,39 +85,48 @@ $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center space-x-4">
                 <div class="flex items-center space-x-2 bg-gray-100 px-3 py-1 rounded-full shadow">
                     <i class="ri-sun-line text-gray-600"></i>
-                    <span class="text-gray-700 font-medium">30°C</span>
+                    <span class="text-gray-700 font-medium">
+                        <?php
+                        if (isset($weather['error'])) {
+                            echo htmlspecialchars($weather['error']);
+                        } else {
+                            echo htmlspecialchars($weather['temperature']) . '°C';
+                        }
+                        ?>
+                    </span>
                 </div>
                 <span class="text-gray-700 font-medium">
-                    <i class="bi bi-clock"></i> 07:29 WIB
+                    <i class="bi bi-clock"></i> <span id="clock">07:29 WIB</span>
                 </span>
                 <span class="text-gray-700 font-medium">
-                    <i class="bi bi-calendar"></i> Monday, 26 August 2024
+                    <i class="bi bi-calendar"></i> <span id="date">Monday, 26 August 2024</span>
                 </span>
             </div>
 
             <!-- Profile and Dropdown -->
             <div class="flex items-center space-x-4 ml-auto relative">
-                <h2 class="text-xl font-semibold text-gray-700">Selamat Malam,</h2>
-                <button class="focus:outline-none relative" id="profileToggle">
-                    <img src="../public/images/pp.jpg" alt="Profil"
+                <h2 class="text-xl font-semibold text-gray-700"><span id="greeting">Selamat Malam</span>,</h2>
+                <button class="focus:outline-none" id="profileToggle">
+                    <?php
+                    function getValidProfilePhoto($currentUser)
+                    {
+                        if (empty($currentUser['profile_photo'])) {
+                            return '../public/images/pp.jpg';
+                        }
+                        $photoPath = '../uploads/profile_photos/' . $currentUser['profile_photo'];
+                        if (file_exists($photoPath)) {
+                            // Selalu tambahkan timestamp untuk memaksa browser memuat ulang gambar
+                            return $photoPath . '?v=' . time();
+                        }
+                        return '../public/images/pp.jpg';
+                    }
+                    ?>
+                    <img src="<?php echo htmlspecialchars(getValidProfilePhoto($currentUser)); ?>" alt="Profil"
                         class="h-10 w-10 rounded-full cursor-pointer ring-2 ring-gray-700">
                 </button>
-                <span class="text-gray-700 font-bold"><?php echo htmlspecialchars($userName); ?></span>
-
-                <div id="dropdownMenu"
-                    class="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 transform scale-y-0 opacity-0 origin-top transition-all duration-300 ease-in-out">
-                    <ul class="py-1">
-                        <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer hover:text-gray-700 transition">
-                            <a href="#" class="block">Profil</a>
-                        </li>
-                        <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer hover:text-gray-700 transition">
-                            <a href="setting.php" class="block">Pengaturan</a>
-                        </li>
-                        <li class="px-4 py-2 text-red-500 hover:bg-red-50 cursor-pointer hover:text-red-700 transition">
-                            <a href="../logout.php" class="block">Keluar</a>
-                        </li>
-                    </ul>
-                </div>
+                <span class="text-gray-700 font-bold">
+                    <?php echo htmlspecialchars($currentUser['username'] ?? 'Guest'); ?>
+                </span>
             </div>
         </div>
     </header>
@@ -120,7 +136,7 @@ $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
         <div class="w-64 text-white p-6 bg-gradient-to-br from-[#374151] to-[#1f2937]">
             <div class="flex items-center mb-8">
                 <i class="ri-folder-line mr-3 text-4xl"></i>
-                <h1 class="text-xl font-bold">Dokumen Admin</h1>
+                <h1 class="text-xl font-bold">Admin Panel</h1>
             </div>
 
             <nav>
@@ -139,12 +155,24 @@ $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <li>
                         <a href="document.php"
                             class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition">
-                            <i class="ri-folder-2-line mr-3"></i>Dokumen
+                            <i class="ri-folder-2-line mr-3"></i>Manajemen Folder
                         </a>
                     </li>
+
+                    <!-- Tambahkan separator sebelum menu logout -->
+                    <li class="border-t border-gray-700 my-4"></li>
+
                     <li>
-                        <a href="#" class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition">
+                        <a href="admin-setting.php?return_to=admin/dashboard.php"
+                            class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition">
                             <i class="ri-settings-3-line mr-3"></i>Pengaturan
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="../logout.php"
+                            class="flex items-center px-4 py-2 rounded-lg hover:bg-red-500/20 transition text-red-400">
+                            <i class="ri-logout-box-line mr-3"></i>Keluar
                         </a>
                     </li>
                 </ul>
@@ -221,7 +249,8 @@ $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     <div>
                                         <p class="font-medium"><?= htmlspecialchars($doc['file_name']) ?></p>
                                         <p class="text-sm text-gray-500">Diunggah oleh
-                                            <?= htmlspecialchars($doc['uploaded_by']) ?></p>
+                                            <?= htmlspecialchars($doc['username']) ?>
+                                        </p>
                                     </div>
                                 </div>
                                 <span
@@ -256,15 +285,8 @@ $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                 </div>
             </div>
-
-            <!-- Recent Activity -->
-            <!-- You can add your Recent Activity sections here like in your previous example -->
         </div>
     </div>
 </body>
-
-
-<script src="../public/js/main.js"></script>
-
 
 </html>

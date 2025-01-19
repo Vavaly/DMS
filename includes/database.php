@@ -1,5 +1,4 @@
 <?php
-// includes/database.php
 class Database
 {
     private $host = "localhost";
@@ -21,10 +20,10 @@ class Database
             $this->conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
             return $this->conn;
         } catch (PDOException $e) {
-            // Log error untuk debugging
+            
             error_log("Connection Error: " . $e->getMessage());
 
-            // Tampilkan pesan error yang lebih spesifik
+           
             if ($e->getCode() == 1049) {
                 die("Database '{$this->db_name}' tidak ditemukan. Pastikan database sudah dibuat.");
             } elseif ($e->getCode() == 1045) {

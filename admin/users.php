@@ -1,80 +1,220 @@
 <?php
-// process_user.php
 session_start();
 require_once '../includes/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/function/weather.php';
 
-
+$weather = getWeather();
 $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
 
-
 $user_id = $_SESSION['user_id'];
+$modal_display = 'none';
+$edit_modal_display = 'none';
 
-// Get user name from database
-$stmt = $db->prepare("SELECT fullname FROM users WHERE id = :user_id");
+
+$stmt = $db->prepare("SELECT * FROM users WHERE id = :user_id");
 $stmt->bindParam(":user_id", $user_id);
 $stmt->execute();
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$currentUser = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// If user exists, get their fullname
-$userName = $user ? $user['fullname'] : 'Guest';
+// Function to fetch all users
+function getAllUsers($db)
+{
+    try {
+        $query = "SELECT id, username, email, role, is_active, created_at 
+                  FROM users 
+                  ORDER BY created_at DESC";
+        $stmt = $db->prepare($query);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error fetching users: " . $e->getMessage());
+        return [];
+    }
+}
 
+// Show modal based on GET parameters
+if (isset($_GET['action'])) {
+    if ($_GET['action'] == 'add') {
+        $modal_display = 'flex';
+    } elseif ($_GET['action'] == 'edit') {
+        $edit_modal_display = 'flex';
+        $edit_user_id = $_GET['user_id'];
+        // Fetch user data for editing
+        $stmt = $db->prepare("SELECT * FROM users WHERE id = :user_id");
+        $stmt->bindParam(":user_id", $edit_user_id);
+        $stmt->execute();
+        $edit_user = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+}
+
+function ubahStatusPengguna($db, $user_id, $status_baru)
+{
+    try {
+        $query = "UPDATE users SET is_active = :status_baru WHERE id = :user_id";
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(':user_id', $user_id);
+        $stmt->bindParam(':status_baru', $status_baru);
+
+        if ($stmt->execute()) {
+            return true;
+        }
+        return false;
+    } catch (PDOException $e) {
+        error_log("Error mengubah status pengguna: " . $e->getMessage());
+        return false;
+    }
+}
+
+function ambilDaftarPengguna($db, $status = null)
+{
+    try {
+        $query = "SELECT id, username, email, role, is_active, created_at 
+                 FROM users 
+                 WHERE role = 'user'";
+
+        if ($status !== null) {
+            $query .= " AND is_active = :status";
+        }
+
+        $query .= " ORDER BY created_at DESC";
+
+        $stmt = $db->prepare($query);
+
+        if ($status !== null) {
+            $stmt->bindParam(':status', $status, PDO::PARAM_INT);
+        }
+
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error mengambil daftar pengguna: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Fungsi untuk mendapatkan status pengguna
+function getStatusPengguna($db, $user_id)
+{
+    try {
+        $query = "SELECT is_active FROM users WHERE id = :user_id";
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(':user_id', $user_id);
+        $stmt->execute();
+
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $result ? $result['is_active'] : null;
+    } catch (PDOException $e) {
+        error_log("Error mendapatkan status pengguna: " . $e->getMessage());
+        return null;
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_STRING);
-    $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
-    $password = $_POST['password']; // Password tidak di-hash sesuai permintaan
-    $role = filter_input(INPUT_POST, 'role', FILTER_SANITIZE_STRING);
-    $fullname = $username; // Bisa dimodifikasi sesuai kebutuhan
+    if (isset($_POST['action'])) {
+        switch ($_POST['action']) {
+            case 'ubah_status':
+                $user_id = filter_input(INPUT_POST, 'user_id', FILTER_SANITIZE_NUMBER_INT);
+                $status_baru = filter_input(INPUT_POST, 'status_baru', FILTER_SANITIZE_NUMBER_INT);
 
-    try {
-        // Persiapkan query
-        $query = "INSERT INTO users (username, password, fullname, email, role) 
-                  VALUES (:username, :password, :fullname, :email, :role)";
-        $stmt = $pdo->prepare($query);
-
-        // Bind parameter
-        $stmt->bindParam(':username', $username);
-        $stmt->bindParam(':password', $password); // Simpan password secara plain-text
-        $stmt->bindParam(':fullname', $fullname);
-        $stmt->bindParam(':email', $email);
-        $stmt->bindParam(':role', $role);
-
-        // Eksekusi query
-        if ($stmt->execute()) {
-            // Log aktivitas
-            $userId = $pdo->lastInsertId();
-            $activityQuery = "INSERT INTO activity_logs (user_id, activity_type, description) 
-                              VALUES (:user_id, 'create_user', 'Created new user: ' || :username)";
-            $activityStmt = $pdo->prepare($activityQuery);
-            $activityStmt->execute([
-                ':user_id' => $_SESSION['user_id'], // ID admin yang membuat user
-                ':username' => $username
-            ]);
-
-            $_SESSION['success'] = "Pengguna baru berhasil ditambahkan!";
-        } else {
-            $_SESSION['error'] = "Gagal menambahkan pengguna baru.";
+                if (ubahStatusPengguna($db, $user_id, $status_baru)) {
+                    $_SESSION['success'] = $status_baru ? "Pengguna berhasil diaktifkan." : "Pengguna berhasil dinonaktifkan.";
+                } else {
+                    $_SESSION['error'] = "Gagal mengubah status pengguna.";
+                }
+                break;
         }
-
-    } catch (PDOException $e) {
-        if ($e->getCode() == 23000) { // Duplicate entry error
-            $_SESSION['error'] = "Username atau email sudah digunakan!";
-        } else {
-            $_SESSION['error'] = "Terjadi kesalahan: " . $e->getMessage();
-        }
+        header("Location: users.php");
+        exit();
     }
-
-    // Redirect kembali ke halaman users
-    header("Location: users.php");
-    exit();
 }
+
+// Handle form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['action'])) {
+        switch ($_POST['action']) {
+            case 'add':
+                $username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_STRING);
+                $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
+                $password = $_POST['password'];
+                $role = filter_input(INPUT_POST, 'role', FILTER_SANITIZE_STRING);
+                $fullname = $username;
+
+                try {
+                    $query = "INSERT INTO users (username, password, fullname, email, role) 
+                             VALUES (:username, :password, :fullname, :email, :role)";
+                    $stmt = $db->prepare($query);
+                    $stmt->bindParam(':username', $username);
+                    $stmt->bindParam(':password', $password);
+                    $stmt->bindParam(':fullname', $fullname);
+                    $stmt->bindParam(':email', $email);
+                    $stmt->bindParam(':role', $role);
+
+                    if ($stmt->execute()) {
+                        $_SESSION['success'] = "Pengguna baru berhasil ditambahkan!";
+                    } else {
+                        $_SESSION['error'] = "Gagal menambahkan pengguna baru.";
+                    }
+                } catch (PDOException $e) {
+                    $_SESSION['error'] = "Error: " . $e->getMessage();
+                }
+                break;
+
+            case 'edit':
+                $user_id = filter_input(INPUT_POST, 'user_id', FILTER_SANITIZE_NUMBER_INT);
+                $username = filter_input(INPUT_POST, 'username', FILTER_SANITIZE_STRING);
+                $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
+                $role = filter_input(INPUT_POST, 'role', FILTER_SANITIZE_STRING);
+
+                try {
+                    $query = "UPDATE users SET 
+                             username = :username,
+                             email = :email,
+                             role = :role
+                             WHERE id = :user_id";
+                    $stmt = $db->prepare($query);
+                    $stmt->bindParam(':user_id', $user_id);
+                    $stmt->bindParam(':username', $username);
+                    $stmt->bindParam(':email', $email);
+                    $stmt->bindParam(':role', $role);
+
+                    if ($stmt->execute()) {
+                        $_SESSION['success'] = "Data pengguna berhasil diperbarui!";
+                    } else {
+                        $_SESSION['error'] = "Gagal memperbarui data pengguna.";
+                    }
+                } catch (PDOException $e) {
+                    $_SESSION['error'] = "Error: " . $e->getMessage();
+                }
+                break;
+
+            case 'delete':
+                $user_id = filter_input(INPUT_POST, 'user_id', FILTER_SANITIZE_NUMBER_INT);
+
+                try {
+                    $query = "UPDATE users SET is_active = 0 WHERE id = :user_id";
+                    $stmt = $db->prepare($query);
+                    $stmt->bindParam(':user_id', $user_id);
+
+                    if ($stmt->execute()) {
+                        $_SESSION['success'] = "Pengguna berhasil dihapus.";
+                    } else {
+                        $_SESSION['error'] = "Gagal menghapus pengguna.";
+                    }
+                } catch (PDOException $e) {
+                    $_SESSION['error'] = "Error: " . $e->getMessage();
+                }
+                break;
+        }
+        header("Location: users.php");
+        exit();
+    }
+}
+
+$users = getAllUsers($db);
 ?>
-
-
-
 
 <!DOCTYPE html>
 <html lang="id">
@@ -82,9 +222,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manajemen Pengguna - Dashboard Admin</title>
+    <title>Manajemen Pengguna</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css" rel="stylesheet">
+    <script src="../public/js/clock.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
 
@@ -111,103 +252,141 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center space-x-4">
                 <div class="flex items-center space-x-2 bg-gray-100 px-3 py-1 rounded-full shadow">
                     <i class="ri-sun-line text-gray-600"></i>
-                    <span class="text-gray-700 font-medium">30°C</span>
+                    <span class="text-gray-700 font-medium">
+                        <?php
+                        if (isset($weather['error'])) {
+                            echo htmlspecialchars($weather['error']);
+                        } else {
+                            echo htmlspecialchars($weather['temperature']) . '°C';
+                        }
+                        ?>
+                    </span>
                 </div>
                 <span class="text-gray-700 font-medium">
-                    <i class="bi bi-clock"></i> 07:29 WIB
+                    <i class="bi bi-clock"></i> <span id="clock">07:29 WIB</span>
                 </span>
                 <span class="text-gray-700 font-medium">
-                    <i class="bi bi-calendar"></i> Monday, 26 August 2024
+                    <i class="bi bi-calendar"></i> <span id="date">Monday, 26 August 2024</span>
                 </span>
             </div>
 
             <!-- Profile and Dropdown -->
             <div class="flex items-center space-x-4 ml-auto relative">
-                <h2 class="text-xl font-semibold text-gray-700">Selamat pagi,</h2>
-                <button class="focus:outline-none relative" id="profileToggle">
-                    <img src="../public/images/pp.jpg" alt="Profil"
+                <h2 class="text-xl font-semibold text-gray-700"><span id="greeting">Selamat Malam</span>,</h2>
+                <button class="focus:outline-none" id="profileToggle">
+                    <?php
+                    function getValidProfilePhoto($currentUser)
+                    {
+                        if (empty($currentUser['profile_photo'])) {
+                            return '../public/images/pp.jpg';
+                        }
+                        $photoPath = '../uploads/profile_photos/' . $currentUser['profile_photo'];
+                        if (file_exists($photoPath)) {
+
+                            return $photoPath . '?v=' . time();
+                        }
+                        return '../public/images/pp.jpg';
+                    }
+                    ?>
+                    <img src="<?php echo htmlspecialchars(getValidProfilePhoto($currentUser)); ?>" alt="Profil"
                         class="h-10 w-10 rounded-full cursor-pointer ring-2 ring-gray-700">
                 </button>
-                <span class="text-gray-700 font-bold"><?php echo htmlspecialchars($userName); ?></span>
-
-                <div id="dropdownMenu"
-                    class="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 transform scale-y-0 opacity-0 origin-top transition-all duration-300 ease-in-out">
-                    <ul class="py-1">
-                        <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer hover:text-gray-700 transition">
-                            <a href="#" class="block">Profil</a>
-                        </li>
-                        <li class="px-4 py-2 hover:bg-gray-100 cursor-pointer hover:text-gray-700 transition">
-                            <a href="setting.php" class="block">Pengaturan</a>
-                        </li>
-                        <li class="px-4 py-2 text-red-500 hover:bg-red-50 cursor-pointer hover:text-red-700 transition">
-                            <a href="../logout.php" class="block">Keluar</a>
-                        </li>
-                    </ul>
-                </div>
+                <span class="text-gray-700 font-bold">
+                    <?php echo htmlspecialchars($currentUser['username'] ?? 'Guest'); ?>
+                </span>
             </div>
         </div>
     </header>
-    <div class="flex h-screen mt-24">
 
-        <!-- Bilah Sisi Modern -->
+    <div class="flex h-screen mt-24">
+        <!-- Sidebar remains the same -->
         <div class="w-64 sidebar text-white p-6">
+            <!-- Sidebar content remains the same -->
             <div class="flex items-center mb-8">
                 <i class="ri-folder-line mr-3 text-4xl"></i>
-                <h1 class="text-xl font-bold">Admin Dokumen</h1>
+                <h1 class="text-xl font-bold">Admin Panel</h1>
             </div>
             <nav>
                 <ul class="space-y-2">
                     <li><a href="dashboard.php"
-                            class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition link"><i
+                            class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition"><i
                                 class="ri-dashboard-line mr-3"></i>Dashboard</a></li>
                     <li><a href="users.php"
-                            class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition link"><i
+                            class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition"><i
                                 class="ri-user-settings-line mr-3"></i>Manajemen Pengguna</a></li>
                     <li><a href="document.php"
-                            class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition link"><i
-                                class="ri-folder-2-line mr-3"></i>Dokumen</a></li>
-                    <li><a href="#" class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition link"><i
-                                class="ri-settings-3-line mr-3"></i>Pengaturan</a></li>
+                            class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition"><i
+                                class="ri-folder-2-line mr-3"></i>Manajemen Folder</a></li>
+
+                    <!-- Tambahkan separator sebelum menu logout -->
+                    <li class="border-t border-gray-700 my-4"></li>
+
+                    <li>
+                        <a href="admin-setting.php?return_to=admin/users.php"
+                            class="flex items-center px-4 py-2 rounded-lg hover:bg-white/20 transition">
+                            <i class="ri-settings-3-line mr-3"></i>Pengaturan
+                        </a>
+                    </li>
+
+                    <li>
+                        <a href="../logout.php"
+                            class="flex items-center px-4 py-2 rounded-lg hover:bg-red-500/20 transition text-red-400">
+                            <i class="ri-logout-box-line mr-3"></i>Keluar
+                        </a>
+                    </li>
                 </ul>
             </nav>
         </div>
 
-        <!-- Konten Utama -->
+        <!-- Main Content -->
         <div class="flex-1 overflow-y-auto main-content p-8">
-            <!-- Header -->
+            <!-- Messages -->
+            <?php if (isset($_SESSION['success'])): ?>
+                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4">
+                    <?php echo $_SESSION['success']; ?>
+                    <?php unset($_SESSION['success']); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_SESSION['error'])): ?>
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+                    <?php echo $_SESSION['error']; ?>
+                    <?php unset($_SESSION['error']); ?>
+                </div>
+            <?php endif; ?>
+
             <div class="flex justify-between items-center mb-8">
                 <h1 class="text-3xl font-bold text-gray-800">Manajemen Pengguna</h1>
-                <div class="flex items-center space-x-4">
-                </div>
             </div>
 
-            <!-- Tombol Tambah Pengguna -->
+            <!-- Add User Button -->
             <div class="mb-6">
-                <button id="openModal"
-                    class="bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition flex items-center">
+                <a href="?action=add"
+                    class="bg-gray-700 text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition inline-flex items-center">
                     <i class="ri-user-add-line mr-2"></i>Tambah Pengguna Baru
-                </button>
+                </a>
             </div>
 
-            <!-- Modal Pop-up -->
-            <div id="userModal"
-                class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 transition-all duration-300 ease-in-out">
-                <div
-                    class="bg-white w-96 rounded-2xl shadow-2xl transform transition-all duration-300 ease-in-out scale-95 opacity-0">
+            <!-- Add User Modal -->
+            <div style="display: <?php echo $modal_display; ?>"
+                class="fixed inset-0 bg-black/50 items-center justify-center z-50">
+                <div class="bg-white w-96 rounded-2xl shadow-2xl">
                     <div class="p-6">
                         <div class="flex justify-between items-center mb-6">
                             <h2 class="text-2xl font-bold text-gray-800">Tambah Pengguna Baru</h2>
-                            <button id="closeModal" class="text-gray-500 hover:text-gray-700 transition">
+                            <a href="users.php" class="text-gray-500 hover:text-gray-700">
                                 <i class="ri-close-line text-2xl"></i>
-                            </button>
+                            </a>
                         </div>
 
-                        <form method="POST" action="your_php_script.php">
+                        <form method="POST" action="">
+                            <!-- Add user form content remains the same -->
+                            <input type="hidden" name="action" value="add">
                             <div class="space-y-4">
                                 <div>
                                     <label for="role" class="block text-sm font-medium text-gray-700 mb-2">Peran</label>
                                     <select id="role" name="role"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                                         <option value="admin">Admin</option>
                                         <option value="user">User</option>
                                     </select>
@@ -217,44 +396,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <label for="username" class="block text-sm font-medium text-gray-700 mb-2">Nama
                                         Pengguna</label>
                                     <input type="text" id="username" name="username"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                                        placeholder="Masukkan nama pengguna" required>
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg" required>
                                 </div>
 
                                 <div>
                                     <label for="email"
                                         class="block text-sm font-medium text-gray-700 mb-2">Email</label>
                                     <input type="email" id="email" name="email"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                                        placeholder="Masukkan email pengguna" required>
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg" required>
                                 </div>
 
                                 <div>
                                     <label for="password" class="block text-sm font-medium text-gray-700 mb-2">Kata
                                         Sandi</label>
                                     <input type="password" id="password" name="password"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                                        placeholder="Masukkan kata sandi" required>
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg" required>
                                 </div>
+
                                 <div class="flex space-x-4 mt-6">
                                     <button type="submit"
-                                        class="flex-1 bg-gray-800 text-white py-2 rounded-lg hover:bg-blue-700 transition transform active:scale-95">
+                                        class="flex-1 bg-gray-800 text-white py-2 rounded-lg hover:bg-gray-700 transition">
                                         Tambah
                                     </button>
-                                    <button type="button" id="cancelModal"
-                                        class="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 transition transform active:scale-95">
+                                    <a href="users.php"
+                                        class="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 transition text-center">
                                         Batal
-                                    </button>
+                                    </a>
                                 </div>
                             </div>
                         </form>
-
                     </div>
                 </div>
             </div>
 
-            <!-- Tabel Manajemen Pengguna -->
+            <!-- Edit User Modal -->
+            <div style="display: <?php echo $edit_modal_display; ?>"
+                class="fixed inset-0 bg-black/50 items-center justify-center z-50">
+                <div class="bg-white w-96 rounded-2xl shadow-2xl">
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-2xl font-bold text-gray-800">Edit Pengguna</h2>
+                            <a href="users.php" class="text-gray-500 hover:text-gray-700">
+                                <i class="ri-close-line text-2xl"></i>
+                            </a>
+                        </div>
+
+                        <form method="POST" action="">
+                            <input type="hidden" name="action" value="edit">
+                            <input type="hidden" name="user_id"
+                                value="<?php echo isset($edit_user) ? $edit_user['id'] : ''; ?>">
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="edit_username" class="block text-sm font-medium text-gray-700 mb-2">Nama
+                                        Pengguna</label>
+                                    <input type="text" id="edit_username" name="username"
+                                        value="<?php echo isset($edit_user) ? htmlspecialchars($edit_user['username']) : ''; ?>"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg" required>
+                                </div>
+
+                                <div>
+                                    <label for="edit_email"
+                                        class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input type="email" id="edit_email" name="email"
+                                        value="<?php echo isset($edit_user) ? htmlspecialchars($edit_user['email']) : ''; ?>"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg" required>
+                                </div>
+
+                                <div>
+                                    <label for="edit_role"
+                                        class="block text-sm font-medium text-gray-700 mb-2">Peran</label>
+                                    <select id="edit_role" name="role"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                        <option value="admin" <?php echo (isset($edit_user) && $edit_user['role'] === 'admin') ? 'selected' : ''; ?>>Admin</option>
+                                        <option value="user" <?php echo (isset($edit_user) && $edit_user['role'] === 'user') ? 'selected' : ''; ?>>User</option>
+                                    </select>
+                                </div>
+
+                                <div class="flex space-x-4 mt-6">
+                                    <button type="submit"
+                                        class="flex-1 bg-gray-800 text-white py-2 rounded-lg hover:bg-gray-700 transition">
+                                        Simpan
+                                    </button>
+                                    <a href="users.php"
+                                        class="flex-1 bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 transition text-center">
+                                        Batal
+                                    </a>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Table -->
             <div class="bg-white rounded-xl shadow-md p-6">
+                <!-- Tambahkan ini di bagian tabel users.php -->
                 <table class="w-full">
                     <thead>
                         <tr class="border-b">
@@ -262,52 +498,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <th class="text-left py-3 px-2">Nama Pengguna</th>
                             <th class="text-left py-3 px-2">Email</th>
                             <th class="text-left py-3 px-2">Peran</th>
+                            <th class="text-left py-3 px-2">Status</th>
                             <th class="text-left py-3 px-2">Tanggal Dibuat</th>
                             <th class="text-left py-3 px-2">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr class="border-b hover:bg-gray-50 transition">
-                            <td class="py-3 px-2">1</td>
-                            <td class="py-3 px-2">Nama Pengguna1</td>
-                            <td class="py-3 px-2">user1@example.com</td>
-                            <td class="py-3 px-2">
-                                <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">admin</span>
-                            </td>
-                            <td class="py-3 px-2">01 Januari 2024</td>
-                            <td class="py-3 px-2">
-                                <div class="flex space-x-2">
-                                    <button class="text-gray-700 hover:text-gray-900">
-                                        <i class="ri-edit-line"></i>
-                                    </button>
-                                    <button class="text-red-500 hover:text-red-700">
-                                        <i class="ri-delete-bin-line"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        <tr class="border-b hover:bg-gray-50 transition">
-                            <td class="py-3 px-2">2</td>
-                            <td class="py-3 px-2">Nama Pengguna2</td>
-                            <td class="py-3 px-2">user2@example.com</td>
-                            <td class="py-3 px-2">
-                                <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">user</span>
-                            </td>
-                            <td class="py-3 px-2">02 Januari 2024</td>
-                            <td class="py-3 px-2">
-                                <div class="flex space-x-2">
-                                    <button class="text-gray-700 hover:text-gray-900">
-                                        <i class="ri-edit-line"></i>
-                                    </button>
-                                    <button class="text-red-500 hover:text-red-700">
-                                        <i class="ri-delete-bin-line"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
+                        <?php foreach ($users as $user): ?>
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="py-3 px-2"><?php echo htmlspecialchars($user['id']); ?></td>
+                                <td class="py-3 px-2">
+                                    <a href="user-documents.php?user_id=<?php echo $user['id']; ?>"
+                                        class="text-grey-600 hover:text-grey-800 hover:underline">
+                                        <?php echo htmlspecialchars($user['username']); ?>
+                                    </a>
+                                </td>
+                                <td class="py-3 px-2"><?php echo htmlspecialchars($user['email']); ?></td>
+                                <td class="py-3 px-2"><?php echo htmlspecialchars($user['role']); ?></td>
+                                <td class="py-3 px-2">
+                                    <span
+                                        class="<?php echo (isset($user['is_active']) && $user['is_active']) ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?> px-2 py-1 rounded-full text-xs">
+                                        <?php echo (isset($user['is_active']) && $user['is_active']) ? 'Aktif' : 'Tidak Aktif'; ?>
+                                    </span>
+                                </td>
+                                <td class="py-3 px-2"><?php echo date('d M Y', strtotime($user['created_at'])); ?></td>
+                                <td class="py-3 px-2">
+                                    <div class="flex space-x-2">
+                                        <!-- Edit Button -->
+                                        <a href="?action=edit&user_id=<?php echo $user['id']; ?>"
+                                            class="text-blue-600 hover:text-blue-800" title="Edit">
+                                            <i class="ri-edit-line"></i>
+                                        </a>
+
+                                        <!-- Activation Toggle Button -->
+                                        <form method="POST" action="" class="inline"
+                                            onsubmit="return confirm('Apakah Anda yakin ingin <?php echo (isset($user['is_active']) && $user['is_active']) ? 'menonaktifkan' : 'mengaktifkan'; ?> pengguna ini?');">
+                                            <input type="hidden" name="action" value="ubah_status">
+                                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                            <input type="hidden" name="status_baru"
+                                                value="<?php echo (isset($user['is_active']) && $user['is_active']) ? '0' : '1'; ?>">
+                                            <button type="submit"
+                                                class="<?php echo (isset($user['is_active']) && $user['is_active']) ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'; ?>"
+                                                title="<?php echo (isset($user['is_active']) && $user['is_active']) ? 'Nonaktifkan' : 'Aktifkan'; ?>">
+                                                <i
+                                                    class="<?php echo (isset($user['is_active']) && $user['is_active']) ? 'ri-user-unfollow-line' : 'ri-user-follow-line'; ?>"></i>
+                                            </button>
+                                        </form>
+
+                                        <!-- Delete Button -->
+                                        <form method="POST" action="" class="inline"
+                                            onsubmit="return confirm('Apakah Anda yakin ingin menghapus pengguna ini?');">
+                                            <input type="hidden" name="action" value="delete">
+                                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                            <button type="submit" class="text-red-600 hover:text-red-800" title="Hapus">
+                                                <i class="ri-delete-bin-line"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
                     </tbody>
                 </table>
-                <!-- Paginasi -->
                 <div class="flex justify-between items-center mt-4">
                     <div class="text-sm text-gray-700">Menampilkan 1 hingga 10 dari 20 entri</div>
                     <div class="flex space-x-2">
@@ -331,10 +583,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
             </div>
-
         </div>
     </div>
 </body>
-<script src="../public/js/main.js"></script>
 
 </html>
