@@ -242,19 +242,23 @@ $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <div class="space-y-4">
                         <?php foreach ($recentDocuments as $doc): ?>
                             <div class="flex items-center justify-between border-b pb-2 last:border-b-0">
-                                <div class="flex items-center">
-                                    <div class="bg-blue-100 p-2 rounded mr-4">
+                                <div class="flex items-center flex-1 min-w-0">
+                                    <div class="bg-blue-100 p-2 rounded mr-4 flex-shrink-0">
                                         <i class="ri-file-line text-blue-500"></i>
                                     </div>
-                                    <div>
-                                        <p class="font-medium"><?= htmlspecialchars($doc['file_name']) ?></p>
+                                    <div class="min-w-0">
+                                        <p
+                                            class="font-medium truncate max-w-[200px] hover:text-clip hover:whitespace-normal">
+                                            <?= htmlspecialchars($doc['file_name']) ?>
+                                        </p>
                                         <p class="text-sm text-gray-500">Diunggah oleh
                                             <?= htmlspecialchars($doc['username']) ?>
                                         </p>
                                     </div>
                                 </div>
-                                <span
-                                    class="text-sm text-gray-500"><?= date('d M Y', strtotime($doc['created_at'])) ?></span>
+                                <span class="text-sm text-gray-500 flex-shrink-0 ml-4">
+                                    <?= date('d M Y', strtotime($doc['created_at'])) ?>
+                                </span>
                             </div>
                         <?php endforeach; ?>
                     </div>
