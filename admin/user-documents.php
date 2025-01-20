@@ -19,8 +19,8 @@ $selected_user = $stmt->fetch(PDO::FETCH_ASSOC);
 // Ambil dokumen user yang dipilih
 function getUserDocuments($db, $user_id)
 {
-    $query = "SELECT * FROM documents  
-              WHERE uploaded_by = :user_id AND is_deleted = 0 
+    $query = "SELECT * FROM documents
+              WHERE uploaded_by = :user_id AND is_deleted = 0
               ORDER BY created_at DESC";
     $stmt = $db->prepare($query);
     $stmt->bindParam(":user_id", $user_id);
@@ -33,6 +33,7 @@ $documents = getUserDocuments($db, $selected_user_id);
 
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -54,8 +55,8 @@ $documents = getUserDocuments($db, $selected_user_id);
                     <span>Total dokumen: <?php echo count($documents); ?></span>
                 </div>
             </div>
-            <a href="users.php" 
-               class="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 
+            <a href="users.php"
+                class="inline-flex items-center px-4 py-2 rounded-lg bg-white border border-gray-300 hover:bg-gray-50
                       transition duration-150 ease-in-out shadow-sm text-gray-700 text-sm">
                 <i class="ri-arrow-left-line mr-2"></i>
                 Kembali
@@ -63,105 +64,105 @@ $documents = getUserDocuments($db, $selected_user_id);
         </div>
 
         <?php if (empty($documents)): ?>
-        <div class="rounded-lg bg-yellow-50 p-4 border border-yellow-200">
-            <div class="flex">
-                <i class="ri-information-line text-yellow-500 mr-3 mt-0.5"></i>
-                <p class="text-sm text-yellow-700">
-                    Tidak ada dokumen yang ditemukan untuk user ini.
-                </p>
+            <div class="rounded-lg bg-yellow-50 p-4 border border-yellow-200">
+                <div class="flex">
+                    <i class="ri-information-line text-yellow-500 mr-3 mt-0.5"></i>
+                    <p class="text-sm text-yellow-700">
+                        Tidak ada dokumen yang ditemukan untuk user ini.
+                    </p>
+                </div>
             </div>
-        </div>
         <?php else: ?>
-        <!-- Table Section -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead>
-                        <tr class="bg-gray-50">
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Nama Dokumen
-                            </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Tipe
-                            </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Ukuran
-                            </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Tanggal Upload
-                            </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Status
-                            </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Aksi
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200">
-                        <?php foreach ($documents as $doc): ?>
-                        <tr class="hover:bg-gray-50 transition-colors duration-150">
-                            <td class="px-6 py-4">
-                                <div class="flex items-center">
-                                    <i class="ri-file-line text-gray-400 text-lg mr-3"></i>
-                                    <span class="text-sm font-medium text-gray-900">
-                                        <?php echo htmlspecialchars($doc['title']); ?>
-                                    </span>
-                                </div>
-                            </td>
-                            <td class="px-6 py-4">
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
-                                    <?php echo htmlspecialchars($doc['file_type']); ?>
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 text-sm text-gray-600">
-                                <?php
-                                if (isset($doc['file_size'])) {
-                                    echo number_format($doc['file_size'] / 1024, 2) . ' KB';
-                                } else {
-                                    echo 'N/A';
-                                }
-                                ?>
-                            </td>
-                            <td class="px-6 py-4">
-                                <div class="text-sm text-gray-600">
-                                    <?php echo date('d/m/Y', strtotime($doc['created_at'])); ?>
-                                    <span class="text-gray-400">
-                                        <?php echo date('H:i', strtotime($doc['created_at'])); ?>
-                                    </span>
-                                </div>
-                            </td>
-                            <td class="px-6 py-4">
-                                <?php if ($doc['is_deleted'] == 0): ?>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
-                                    Active
-                                </span>
-                                <?php else: ?>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
-                                    Deleted
-                                </span>
-                                <?php endif; ?>
-                            </td>
-                            <td class="px-6 py-4">
-                                <?php if ($doc['is_deleted'] == 0): ?>
-                                <div class="flex space-x-3">
-                                    <a href="document-handler.php?id=<?php echo $doc['id']; ?>&action=view"
-                                       class="text-sm text-green-600 hover:text-green-800 transition-colors duration-150">
-                                        <i class="ri-eye-line text-lg"></i>
-                                    </a>
-                                    <a href="document-handler.php?id=<?php echo $doc['id']; ?>&action=download"
-                                       class="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-150">
-                                        <i class="ri-download-line text-lg"></i>
-                                    </a>
-                                </div>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+            <!-- Table Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead>
+                            <tr class="bg-gray-50">
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Nama Dokumen
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Tipe
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Ukuran
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Tanggal Upload
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Status
+                                </th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Aksi
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <?php foreach ($documents as $doc): ?>
+                                <tr class="hover:bg-gray-50 transition-colors duration-150">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center">
+                                            <i class="ri-file-line text-gray-400 text-lg mr-3"></i>
+                                            <span class="text-sm font-medium text-gray-900">
+                                                <?php echo htmlspecialchars($doc['title']); ?>
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-green-700">
+                                            <?php echo htmlspecialchars($doc['file_type']); ?>
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 text-sm text-gray-600">
+                                        <?php
+                                        if (isset($doc['file_size'])) {
+                                            echo number_format($doc['file_size'] / 1024, 2) . ' KB';
+                                        } else {
+                                            echo 'N/A';
+                                        }
+                                        ?>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm text-gray-600">
+                                            <?php echo date('d/m/Y', strtotime($doc['created_at'])); ?>
+                                            <span class="text-gray-400">
+                                                <?php echo date('H:i', strtotime($doc['created_at'])); ?>
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <?php if ($doc['is_deleted'] == 0): ?>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                                                Active
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
+                                                Deleted
+                                            </span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <?php if ($doc['is_deleted'] == 0): ?>
+                                            <div class="flex space-x-3">
+                                                <a href="document-handler.php?id=<?php echo $doc['id']; ?>&action=view"
+                                                    class="text-sm text-green-600 hover:text-green-800 transition-colors duration-150">
+                                                    <i class="ri-eye-line text-lg"></i>
+                                                </a>
+                                                <a href="document-handler.php?id=<?php echo $doc['id']; ?>&action=download"
+                                                    class="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-150">
+                                                    <i class="ri-download-line text-lg"></i>
+                                                </a>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
         <?php endif; ?>
     </div>
 
@@ -171,4 +172,5 @@ $documents = getUserDocuments($db, $selected_user_id);
         }
     </script>
 </body>
+
 </html>
