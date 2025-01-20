@@ -111,7 +111,7 @@ $documents = getUserDocuments($db, $selected_user_id);
                                         </div>
                                     </td>
                                     <td class="px-6 py-4">
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-green-700">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
                                             <?php echo htmlspecialchars($doc['file_type']); ?>
                                         </span>
                                     </td>
