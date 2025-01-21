@@ -20,8 +20,8 @@ $selected_user = $stmt->fetch(PDO::FETCH_ASSOC);
 
 function getUserDocuments($db, $user_id)
 {
-    $query = "SELECT * FROM documents  
-              WHERE uploaded_by = :user_id AND is_deleted = 0 
+    $query = "SELECT * FROM documents
+              WHERE uploaded_by = :user_id AND is_deleted = 0
               ORDER BY created_at DESC";
     $stmt = $db->prepare($query);
     $stmt->bindParam(":user_id", $user_id);
@@ -34,6 +34,7 @@ $documents = getUserDocuments($db, $selected_user_id);
 
 <!DOCTYPE html>
 <html lang="id">
+
 
 <head>
     <meta charset="UTF-8">
@@ -193,5 +194,6 @@ $documents = getUserDocuments($db, $selected_user_id);
         <?php endif; ?>
     </div>
 </body>
+
 
 </html>
